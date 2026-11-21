@@ -35,10 +35,10 @@ build_tools="$android_sdk/build-tools/36.0.0"
 mkdir -p "$work/classes" "$work/dex"
 
 javac --release 8 -cp "$android_jar" -d "$work/classes" \
-    "$patch_dir/ExpansionTiming.java" "$patch_dir/CapsuleIconMask.java" "$patch_dir/MediaActionFilter.java"
+    "$patch_dir/ExpansionTiming.java" "$patch_dir/CapsuleIconMask.java" "$patch_dir/MediaActionFilter.java" \
+    "$patch_dir/ChargingPowerDisplay.java"
 "$build_tools/d8" --min-api 28 --lib "$android_jar" --output "$work/dex" \
-    "$work/classes/$package/ExpansionTiming.class" "$work/classes/$package/CapsuleIconMask.class" \
-    "$work/classes/$package/MediaActionFilter.class"
+    "$work/classes/$package/"*.class
 python3 - "$original_apk" "$work/dex/classes.dex" "$work/helper.apk" <<'PY'
 import sys
 from zipfile import ZipFile
@@ -55,13 +55,12 @@ java -jar "$apktool_jar" decode --no-res --frame-path "$work/framework" \
 java -jar "$apktool_jar" decode --frame-path "$work/framework" \
     -o "$work/app" "$original_apk"
 target="$work/app/smali/$package"
-cp -- "$work/helper/smali/$package/ExpansionTiming.smali" \
-    "$work/helper/smali/$package/CapsuleIconMask.smali" \
-    "$work/helper/smali/$package/MediaActionFilter.smali" "$target/"
+cp -- "$work/helper/smali/$package/"*.smali "$target/"
 python3 "$patch_dir/apply_animation.py" "$target/SystemUiAicyIsland.smali"
 python3 -B "$patch_dir/apply_icons.py" "$target"
 python3 -B "$patch_dir/apply_orientation.py" "$target"
 python3 -B "$patch_dir/apply_release_ui.py" "$target"
+python3 -B "$patch_dir/apply_charging.py" "$target"
 python3 -B "$patch_dir/apply_launcher_icon.py" "$work/app"
 java -jar "$apktool_jar" build --frame-path "$work/framework" \
     -o "$work/assembled.apk" "$work/app"

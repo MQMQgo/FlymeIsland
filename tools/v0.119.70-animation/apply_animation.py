@@ -55,7 +55,27 @@ OPENING_TIMING = """    move/from16 v19, v0
 
     sget-boolean v30, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->callMediumVisible:Z
 
-    invoke-static/range {v20 .. v30}, Lio/github/flymeisland/diagnostic/ExpansionTiming;->applyIfOpening(Landroid/animation/ValueAnimator;JFFFFFFFZ)Z
+    const/4 v6, 0x4
+
+    invoke-static {v6}, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->dp(I)I
+
+    move-result v6
+
+    invoke-virtual {v4, v1, v6}, Lio/github/flymeisland/diagnostic/CameraIslandLayout;->messageSecondaryWidthLimit(II)I
+
+    move-result v31
+
+    move/from16 v6, p2
+
+    invoke-static {v11, v6}, Ljava/lang/Math;->max(FF)F
+
+    move-result v6
+
+    int-to-float v8, v0
+
+    sub-float v32, v8, v6
+
+    invoke-static/range {v20 .. v32}, Lio/github/flymeisland/diagnostic/ExpansionTiming;->applyIfOpening(Landroid/animation/ValueAnimator;JFFFFFFFZIF)Z
 
     move-result v6
 
@@ -74,6 +94,44 @@ OPENING_TIMING = """    move/from16 v19, v0
 
     :opening_timing_ready"""
 
+DEFAULT_FRAME = """    invoke-static {p4, p5, v0}, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->mix(FFF)F
+
+    move-result p2
+
+    invoke-static {p6, p7, v0}, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->mix(FFF)F
+
+    move-result p3
+
+    invoke-static {p8, p9, v0}, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->mix(FFF)F
+
+    move-result p4
+
+    sget p5, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->radius:F
+
+    invoke-virtual {p1, p2, p3, p4, p5}, Lio/github/flymeisland/diagnostic/CameraIslandLayout;->setFrame(FFFF)V"""
+
+EXPANSION_FRAME = """    move-object/from16 p2, p16
+
+    const/4 p3, 0x0
+
+    invoke-static {p2, p4, p5, v0, p3}, Lio/github/flymeisland/diagnostic/ExpansionTiming;->frameSize(Landroid/animation/ValueAnimator;FFFZ)F
+
+    move-result p4
+
+    const/4 p3, 0x1
+
+    invoke-static {p2, p6, p7, v0, p3}, Lio/github/flymeisland/diagnostic/ExpansionTiming;->frameSize(Landroid/animation/ValueAnimator;FFFZ)F
+
+    move-result p3
+
+    invoke-static {p8, p9, v0}, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->mix(FFF)F
+
+    move-result p2
+
+    sget p5, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->radius:F
+
+    invoke-virtual {p1, p4, p3, p2, p5}, Lio/github/flymeisland/diagnostic/CameraIslandLayout;->setFrame(FFFF)V"""
+
 CONTENT_PROGRESS = (
     "Lio/github/flymeisland/diagnostic/ExpansionTiming;"
     "->contentProgress(Landroid/animation/ValueAnimator;FF)F"
@@ -81,11 +139,12 @@ CONTENT_PROGRESS = (
 
 
 def time_expansion(method):
-    method = replace_once(method, "    .locals 20", "    .locals 31")
+    method = replace_once(method, "    .locals 20", "    .locals 33")
     return replace_once(method, DEFAULT_TIMING, OPENING_TIMING)
 
 
-def fade_content(method):
+def animate_frame(method):
+    method = replace_once(method, DEFAULT_FRAME, EXPANSION_FRAME)
     method = replace_once(
         method,
         "    .line 3223\n    sget-object",
@@ -128,6 +187,6 @@ smali = edit_method(
     smali,
     ".method static synthetic lambda$transition$36(ILio/github/flymeisland/diagnostic/CameraIslandLayout;"
     "FFFFFFFFFFFFFFLandroid/animation/ValueAnimator;)V",
-    fade_content,
+    animate_frame,
 )
 island.write_text(smali, encoding="utf-8")

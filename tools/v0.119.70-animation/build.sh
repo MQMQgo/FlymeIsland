@@ -34,9 +34,10 @@ android_jar="$android_sdk/platforms/android-36/android.jar"
 build_tools="$android_sdk/build-tools/36.0.0"
 mkdir -p "$work/classes" "$work/dex"
 
-javac --release 8 -cp "$android_jar" -d "$work/classes" "$patch_dir/ExpansionTiming.java"
+javac --release 8 -cp "$android_jar" -d "$work/classes" \
+    "$patch_dir/ExpansionTiming.java" "$patch_dir/CompactMusicTitle.java"
 "$build_tools/d8" --min-api 28 --lib "$android_jar" --output "$work/dex" \
-    "$work/classes/$package/ExpansionTiming.class"
+    "$work/classes/$package/ExpansionTiming.class" "$work/classes/$package/CompactMusicTitle.class"
 python3 - "$original_apk" "$work/dex/classes.dex" "$work/helper.apk" <<'PY'
 import sys
 from zipfile import ZipFile
@@ -53,16 +54,20 @@ java -jar "$apktool_jar" decode --no-res --frame-path "$work/framework" \
 java -jar "$apktool_jar" decode --no-res --frame-path "$work/framework" \
     -o "$work/app" "$original_apk"
 target="$work/app/smali/$package"
-cp -- "$work/helper/smali/$package/ExpansionTiming.smali" "$target/ExpansionTiming.smali"
+cp -- "$work/helper/smali/$package/ExpansionTiming.smali" \
+    "$work/helper/smali/$package/CompactMusicTitle.smali" "$target/"
 python3 "$patch_dir/apply_animation.py" "$target/SystemUiAicyIsland.smali"
 java -jar "$apktool_jar" build --frame-path "$work/framework" \
     -o "$work/assembled.apk" "$work/app"
 
-python3 - "$original_apk" "$work/assembled.apk" "$work/unsigned.apk" <<'PY'
+python3 -B - "$original_apk" "$work/assembled.apk" "$work/unsigned.apk" "$patch_dir" <<'PY'
 import sys
 from zipfile import ZipFile
 
-original_path, assembled_path, output_path = sys.argv[1:]
+original_path, assembled_path, output_path, patch_dir = sys.argv[1:]
+sys.path.insert(0, patch_dir)
+from manifest_version import stamp_manifest_version
+
 old_signatures = {"META-INF/ANDROIDD.SF", "META-INF/ANDROIDD.RSA", "META-INF/MANIFEST.MF"}
 with ZipFile(original_path) as original, ZipFile(assembled_path) as assembled, ZipFile(output_path, "w") as output:
     dex = assembled.read("classes.dex")
@@ -71,6 +76,8 @@ with ZipFile(original_path) as original, ZipFile(assembled_path) as assembled, Z
     for entry in original.infolist():
         if entry.filename not in old_signatures:
             payload = dex if entry.filename == "classes.dex" else original.read(entry)
+            if entry.filename == "AndroidManifest.xml":
+                payload = stamp_manifest_version(payload)
             output.writestr(entry, payload)
 PY
 

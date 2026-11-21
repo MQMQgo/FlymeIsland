@@ -4,16 +4,20 @@ import android.animation.TimeInterpolator;
 import android.animation.ValueAnimator;
 
 final class ExpansionTiming implements TimeInterpolator {
-    private static final long MIN_OPENING_MS = 320L;
+    private static final long MIN_OPENING_MS = 260L;
     private static final long DURATION_MS = 340L;
-    private static final float WIDTH_PEAK_PROGRESS = .80f;
-    private static final float HEIGHT_PEAK_PROGRESS = .90f;
+    private static final long COMPACT_DURATION_MS = 270L;
+    private static final float WIDTH_PEAK_PROGRESS = .70f;
+    private static final float HEIGHT_PEAK_PROGRESS = .82f;
+    private static final float WIDTH_RECOIL_PROGRESS = .91f;
     private final int widthLimit;
     private final float heightLimit;
+    private final boolean compactArrival;
 
-    private ExpansionTiming(int widthLimit, float heightLimit) {
+    private ExpansionTiming(int widthLimit, float heightLimit, boolean compactArrival) {
         this.widthLimit = widthLimit;
         this.heightLimit = heightLimit;
+        this.compactArrival = compactArrival;
     }
 
     static boolean applyIfOpening(ValueAnimator animator, long duration,
@@ -21,12 +25,15 @@ final class ExpansionTiming implements TimeInterpolator {
             float cardAlpha, float pillAlpha, float secondaryAlpha, boolean callCard,
             int widthLimit, float heightLimit) {
         boolean grows = width > startWidth + .5f || height > startHeight + .5f;
-        boolean opensCard = cardAlpha > 0f || secondaryAlpha > 0f || callCard;
-        if (duration < MIN_OPENING_MS || pillAlpha != 0f || !grows || !opensCard) {
+        boolean opensCard = duration >= MIN_OPENING_MS && pillAlpha == 0f
+                && (cardAlpha > 0f || secondaryAlpha > 0f || callCard);
+        boolean compactArrival = duration == 240L && pillAlpha == 1f
+                && Math.abs(startWidth - startHeight) <= .5f && width > startWidth + .5f;
+        if (!grows || (!opensCard && !compactArrival)) {
             return false;
         }
-        animator.setInterpolator(new ExpansionTiming(widthLimit, heightLimit));
-        animator.setDuration(DURATION_MS);
+        animator.setInterpolator(new ExpansionTiming(widthLimit, heightLimit, compactArrival));
+        animator.setDuration(compactArrival ? COMPACT_DURATION_MS : DURATION_MS);
         return true;
     }
 
@@ -43,8 +50,8 @@ final class ExpansionTiming implements TimeInterpolator {
         }
         ExpansionTiming timing = (ExpansionTiming) interpolator;
         float limit = vertical ? timing.heightLimit : timing.widthLimit;
-        float stretch = travel * (vertical ? .065f : .055f);
-        float cap = target * (vertical ? .05f : .04f);
+        float stretch = travel * (vertical ? .16f : .08f);
+        float cap = target * (vertical ? .12f : .05f);
         float overshoot = Math.max(0f, Math.min(Math.min(stretch, cap), limit - target));
         float peakProgress = vertical ? HEIGHT_PEAK_PROGRESS : WIDTH_PEAK_PROGRESS;
         if (progress < peakProgress) {
@@ -54,12 +61,23 @@ final class ExpansionTiming implements TimeInterpolator {
                     : approach + approach * approach * (1f - approach);
             return start + (travel + overshoot) * easedApproach;
         }
-        float settle = (progress - peakProgress) / (1f - peakProgress);
-        return target + overshoot * (1f - smoothStep(settle));
+        if (vertical) {
+            float settle = (progress - peakProgress) / (1f - peakProgress);
+            return target + overshoot * (1f - smoothStep(settle));
+        }
+        // Recoil inward so the stretch is visible even at the width limit.
+        float recoil = Math.min(travel * .15f, target * .055f);
+        if (progress < WIDTH_RECOIL_PROGRESS) {
+            float settle = (progress - peakProgress) / (WIDTH_RECOIL_PROGRESS - peakProgress);
+            return target + overshoot - (overshoot + recoil) * smoothStep(settle);
+        }
+        float settle = (progress - WIDTH_RECOIL_PROGRESS) / (1f - WIDTH_RECOIL_PROGRESS);
+        return target - recoil * (1f - smoothStep(settle));
     }
 
     static float contentProgress(ValueAnimator animator, float progress, float targetAlpha) {
-        if (!(animator.getInterpolator() instanceof ExpansionTiming)) {
+        TimeInterpolator interpolator = animator.getInterpolator();
+        if (!(interpolator instanceof ExpansionTiming) || ((ExpansionTiming) interpolator).compactArrival) {
             return progress;
         }
         float start = targetAlpha > 0f ? .18f : .04f;

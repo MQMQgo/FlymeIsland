@@ -17,9 +17,71 @@ def replace_block(method, start, end, replacement=""):
     return method[:start_at] + replacement + method[end_at:]
 
 
-def notification_icon(method):
+def align_secondary_contents(method):
+    method = replace_block(method, "    .line 2893\n", "    .line 2898\n")
+    method = replace_once(
+        method,
+        "    move-result v13\n\n    add-int/2addr v0, v13\n\n    .line 2901\n",
+        "    move-result v15\n\n    .line 2901\n",
+    )
+    # The taller of the icon and text determines the content height. Apply one
+    # top inset to both, then keep their individual offsets within that area.
+    height_calculation = f"    .line 2908\n    sget v15, {ISLAND}->messageMediumH:I\n"
+    return replace_block(method, height_calculation, "    .line 2912\n", f"""    .line 2908
+    invoke-static {{v6}}, {ISLAND}->dp(I)I
+
+    move-result v6
+
+    add-int/2addr v6, v7
+
+    add-int/2addr v14, v15
+
+    add-int/2addr v14, v13
+
+    invoke-static {{v6, v14}}, Ljava/lang/Math;->max(II)I
+
+    move-result v6
+
+    sget v14, {ISLAND}->messageMediumH:I
+
+    sub-int/2addr v14, v6
+
+    invoke-static {{v0, v14}}, Ljava/lang/Math;->max(II)I
+
+    move-result v0
+
+    add-int/2addr v6, v0
+
+    sput v6, {ISLAND}->messageMediumH:I
+
+    .line 2910
+    add-int/2addr v7, v0
+
+    iput v7, v10, Landroid/widget/FrameLayout$LayoutParams;->topMargin:I
+
+    sget-object v13, {ISLAND}->messageMediumIcon:Landroid/widget/ImageView;
+
+    invoke-virtual {{v13, v10}}, Landroid/widget/ImageView;->setLayoutParams(Landroid/view/ViewGroup$LayoutParams;)V
+
+    add-int/2addr v0, v15
+
+    .line 2911
+    sget v10, {ISLAND}->requestedMessageSecondaryTextX:I
+
+    const/16 v13, 0x24
+
+    const/16 v14, 0xb4
+
+    invoke-static {{v10, v13, v14}}, Lio/github/flymeisland/diagnostic/SystemUiIslandPrefs;->clamp(III)I
+
+    move-result v10
+
+""")
+
+
+def notification_capsule(method):
     method = replace_block(method, "    .line 2819\n", "    .line 2820\n")
-    return replace_block(method, "    .line 2858\n    :try_start_0\n", "    .line 2868\n", f"""    .line 2858
+    method = replace_block(method, "    .line 2858\n    :try_start_0\n", "    .line 2868\n", f"""    .line 2858
     sget-object v0, {ISLAND}->messageMediumIcon:Landroid/widget/ImageView;
 
     sget-object v13, {ISLAND}->context:Landroid/content/Context;
@@ -29,6 +91,7 @@ def notification_icon(method):
     invoke-static {{v0, v13, v14}}, {PACKAGE_ICON}
 
 """)
+    return align_secondary_contents(method)
 
 
 def contact_icon(method):
@@ -87,7 +150,7 @@ LYRIC_ARTWORK = f""".method private static setLyricArtwork(Landroid/widget/Image
 def patch_island(smali):
     smali = edit_method(
         smali, ".method private static showMessageSecondary(Lio/github/flymeisland/diagnostic/SystemUiAicyIsland$Notice;"
-        "Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z", notification_icon,
+        "Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z", notification_capsule,
     )
     smali = edit_method(
         smali, ".method private static showLyricMedium()V", lyric_icon,
@@ -176,12 +239,21 @@ def patch_settings(smali):
     return replace_once(smali, r"\u5de6\u4fa7\u5706\u5f62\u56fe\u6807", r"\u5de6\u4fa7\u5e94\u7528\u56fe\u6807")
 
 
+def patch_position_dialog(smali):
+    return replace_once(
+        smali,
+        r"\u6587\u5b57\u4ecd\u9075\u5b88\u9876\u90e8\u907f\u8ba9",
+        r"\u56fe\u6807\u548c\u6587\u5b57\u5171\u7528\u9876\u90e8\u907f\u8ba9",
+    )
+
+
 target = Path(sys.argv[1])
 for name, patch in (
     ("SystemUiAicyIsland", patch_island),
     ("SnapshotSafeAvatarView", patch_avatar),
     ("SystemUiAicyIsland$StackRow", patch_stack_row),
     ("MainActivity", patch_settings),
+    ("MessageSecondaryPositionDialog", patch_position_dialog),
 ):
     path = target / (name + ".smali")
     path.write_text(patch(path.read_text(encoding="utf-8")), encoding="utf-8")

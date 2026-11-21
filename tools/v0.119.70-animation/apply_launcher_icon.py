@@ -5,8 +5,8 @@ import sys
 from apply_animation import replace_once
 
 
-VERSION_CODE = 207
-VERSION_NAME = "0.119.70-fork.207"
+VERSION_CODE = 208
+VERSION_NAME = "0.119.70-fork.208"
 
 project = Path(sys.argv[1])
 manifest = project / "AndroidManifest.xml"

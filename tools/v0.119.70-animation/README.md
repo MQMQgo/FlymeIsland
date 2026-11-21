@@ -6,7 +6,9 @@
 
 二级胶囊、展开卡片和消息列表中的应用图标采用 Android 系统图标遮罩。顶栏小胶囊使用圆形遮罩。
 
-`0.119.70-fork.206` 的 Android `versionCode` 为 `206`。媒体设置和展开卡片移除了歌词相关入口。「关于与更新」链接到 `MQMQgo/FlymeIsland`，并列出 sisjxj 和 MQMQgo。
+媒体设置和展开卡片移除了歌词相关入口。「关于与更新」链接到 `MQMQgo/FlymeIsland`，并列出 sisjxj 和 MQMQgo。
+
+`0.119.70-fork.207` 的 Android `versionCode` 为 `207`。启动器使用蓝紫胶囊和薄荷绿波形组成的自适应图标，支持启动器的圆形与方圆形遮罩。
 
 在 Linux 上使用 JDK 17、Python 3、Apktool 3.0.3、Android SDK 36 和 Build-Tools 36.0.0。脚本核对原版 APK 的 SHA-256，并生成可供签名的 APK。
 

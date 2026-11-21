@@ -52,7 +52,7 @@ PY
 
 java -jar "$apktool_jar" decode --no-res --frame-path "$work/framework" \
     -o "$work/helper" "$work/helper.apk"
-java -jar "$apktool_jar" decode --no-res --frame-path "$work/framework" \
+java -jar "$apktool_jar" decode --frame-path "$work/framework" \
     -o "$work/app" "$original_apk"
 target="$work/app/smali/$package"
 cp -- "$work/helper/smali/$package/ExpansionTiming.smali" \
@@ -62,28 +62,32 @@ python3 "$patch_dir/apply_animation.py" "$target/SystemUiAicyIsland.smali"
 python3 -B "$patch_dir/apply_icons.py" "$target"
 python3 -B "$patch_dir/apply_orientation.py" "$target"
 python3 -B "$patch_dir/apply_release_ui.py" "$target"
+python3 -B "$patch_dir/apply_launcher_icon.py" "$work/app"
 java -jar "$apktool_jar" build --frame-path "$work/framework" \
     -o "$work/assembled.apk" "$work/app"
 
-python3 -B - "$original_apk" "$work/assembled.apk" "$work/unsigned.apk" "$patch_dir" <<'PY'
+python3 - "$original_apk" "$work/assembled.apk" "$work/unsigned.apk" <<'PY'
 import sys
 from zipfile import ZipFile
 
-original_path, assembled_path, output_path, patch_dir = sys.argv[1:]
-sys.path.insert(0, patch_dir)
-from manifest_version import stamp_manifest_version
-
+original_path, assembled_path, output_path = sys.argv[1:]
 old_signatures = {"META-INF/ANDROIDD.SF", "META-INF/ANDROIDD.RSA", "META-INF/MANIFEST.MF"}
+rebuilt_entries = {"classes.dex", "AndroidManifest.xml", "resources.arsc"}
 with ZipFile(original_path) as original, ZipFile(assembled_path) as assembled, ZipFile(output_path, "w") as output:
-    dex = assembled.read("classes.dex")
-    if dex == original.read("classes.dex"):
+    if assembled.read("classes.dex") == original.read("classes.dex"):
         raise ValueError("Expected the animation patch to change classes.dex")
     for entry in original.infolist():
-        if entry.filename not in old_signatures:
-            payload = dex if entry.filename == "classes.dex" else original.read(entry)
-            if entry.filename == "AndroidManifest.xml":
-                payload = stamp_manifest_version(payload)
-            output.writestr(entry, payload)
+        name = entry.filename
+        if name in old_signatures:
+            continue
+        if name in rebuilt_entries:
+            output.writestr(entry, assembled.read(name))
+        else:
+            output.writestr(entry, original.read(entry))
+    original_names = set(original.namelist())
+    for entry in assembled.infolist():
+        if entry.filename.startswith("res/") and entry.filename not in original_names:
+            output.writestr(entry, assembled.read(entry))
 PY
 
 "$build_tools/zipalign" -P 16 -f 4 "$work/unsigned.apk" "$work/aligned.apk"

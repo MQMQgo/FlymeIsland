@@ -6,7 +6,8 @@ import android.animation.ValueAnimator;
 final class ExpansionTiming implements TimeInterpolator {
     private static final long MIN_OPENING_MS = 320L;
     private static final long DURATION_MS = 340L;
-    private static final float PEAK_PROGRESS = .88f;
+    private static final float WIDTH_PEAK_PROGRESS = .80f;
+    private static final float HEIGHT_PEAK_PROGRESS = .90f;
     private final int widthLimit;
     private final float heightLimit;
 
@@ -42,17 +43,18 @@ final class ExpansionTiming implements TimeInterpolator {
         }
         ExpansionTiming timing = (ExpansionTiming) interpolator;
         float limit = vertical ? timing.heightLimit : timing.widthLimit;
-        float overshoot = Math.min(Math.min(travel * .065f, target * .05f), limit - target);
-        if (overshoot <= 0f) {
-            return start + travel * progress;
-        }
-        if (progress < PEAK_PROGRESS) {
-            float approach = progress / PEAK_PROGRESS;
-            // Both the approach and the return reach the peak at zero velocity.
-            float easedApproach = approach + approach * approach * (1f - approach);
+        float stretch = travel * (vertical ? .065f : .055f);
+        float cap = target * (vertical ? .05f : .04f);
+        float overshoot = Math.max(0f, Math.min(Math.min(stretch, cap), limit - target));
+        float peakProgress = vertical ? HEIGHT_PEAK_PROGRESS : WIDTH_PEAK_PROGRESS;
+        if (progress < peakProgress) {
+            float approach = progress / peakProgress;
+            // Width stretches first while height eases into the later peak.
+            float easedApproach = vertical ? smoothStep(approach)
+                    : approach + approach * approach * (1f - approach);
             return start + (travel + overshoot) * easedApproach;
         }
-        float settle = (progress - PEAK_PROGRESS) / (1f - PEAK_PROGRESS);
+        float settle = (progress - peakProgress) / (1f - peakProgress);
         return target + overshoot * (1f - smoothStep(settle));
     }
 

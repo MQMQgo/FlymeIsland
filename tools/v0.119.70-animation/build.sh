@@ -58,6 +58,7 @@ cp -- "$work/helper/smali/$package/ExpansionTiming.smali" \
     "$work/helper/smali/$package/CapsuleIconMask.smali" "$target/"
 python3 "$patch_dir/apply_animation.py" "$target/SystemUiAicyIsland.smali"
 python3 -B "$patch_dir/apply_icons.py" "$target"
+python3 -B "$patch_dir/apply_orientation.py" "$target"
 java -jar "$apktool_jar" build --frame-path "$work/framework" \
     -o "$work/assembled.apk" "$work/app"
 

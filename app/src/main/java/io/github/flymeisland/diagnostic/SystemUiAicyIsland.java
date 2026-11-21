@@ -67,10 +67,9 @@ public final class SystemUiAicyIsland {
     };
     private static final long EXPANDED_MS = 5100L;
     private static final long DEMO_PILL_MS = 8000L;
-    // 580ms intentional idle gap in v0.28 caused the visibly stalled transition.
-    // Keep the compact badge visible for only a few frames, then morph immediately.
-    private static final long PILL_INTRO_MS = 110L;
-    private static final long MORPH_MS = 360L;
+    private static final long PILL_INTRO_MS = 65L;
+    private static final long EXPAND_ANIMATION_MS = 320L;
+    private static final long COLLAPSE_ANIMATION_MS = 360L;
     private static final long ROTATE_MS = 6000L;
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -129,7 +128,6 @@ public final class SystemUiAicyIsland {
     private static int[] callSizes = CallSizePrefs.DEFAULTS.clone();
     private static int[] callOffsets = new int[6];
     private static LinearLayout callMedium;
-    private static boolean callMediumVisible;
     private static boolean previousCallConnected;
     private static boolean isCurrentCall() { Notice n=ACTIVE.get(visibleKey); return n!=null && MiniBridgeContract.COMMAND_CALL.equals(n.command); }
     private static boolean callConnected() { return (callCaps & (4|8|16)) != 0; }
@@ -794,8 +792,8 @@ public final class SystemUiAicyIsland {
         card.setFrame(smallW, smallH, 0f, radius);
         card.setSwipeMode(swipeMode);
         card.setGestureCallback(new IslandGestureLayout.Callback() {
-            @Override public boolean isExpanded() { return SystemUiAicyIsland.isExpanded || callMediumVisible; }
-            @Override public void retract() { if (isCurrentCall()) { hideCallMedium(); morph(false); } else collapseAndRestoreMusic(); }
+            @Override public boolean isExpanded() { return SystemUiAicyIsland.isExpanded; }
+            @Override public void retract() { if (isCurrentCall()) morph(false); else collapseAndRestoreMusic(); }
             @Override public void dismiss() { dismissIsland(); }
             @Override public String mediaGestureKey() { return gestureIdentity(visibleKey); }
             @Override public void mediaSwipe(String identity, boolean next) {
@@ -1001,25 +999,21 @@ public final class SystemUiAicyIsland {
         }
     }
 
-    private static void hideCallMedium() {
-        callMediumVisible=false;
-        if (callMedium!=null) { callMedium.setAlpha(0f);callMedium.setVisibility(View.INVISIBLE); }
-    }
     private static void showCallMedium() {
-        if (root==null || lp==null || callMedium==null || !isCurrentCall() || isLocked(context)) return;
-        MAIN.removeCallbacks(EXPAND); MAIN.removeCallbacks(COLLAPSE); MAIN.removeCallbacks(ROTATE);
-        callMediumVisible=true; isExpanded=true;
-        ((CameraIslandLayout)root).setCallMediumSize(dp(callSizes[2]),dp(callSizes[3]));
-        callMedium.setAlpha(0f); callMedium.setVisibility(View.INVISIBLE);
-        transition(dp(callSizes[2]),dp(callSizes[3]),0f,dp(callSizes[3])/2f,0f,0f,360L,() -> {
-            if (callMediumVisible && callMedium!=null && isCurrentCall()) { callMedium.setVisibility(View.VISIBLE);callMedium.animate().alpha(1f).setDuration(120).start(); }
-        });
+        if (root == null || lp == null || callMedium == null || !isCurrentCall() || isLocked(context)) return;
+        MAIN.removeCallbacks(EXPAND);
+        MAIN.removeCallbacks(COLLAPSE);
+        MAIN.removeCallbacks(ROTATE);
+        isExpanded = true;
+        int width = dp(callSizes[2]), height = dp(callSizes[3]);
+        ((CameraIslandLayout) root).setCallMediumSize(width, height);
+        transition(width, height, 0f, height * .5f, callMedium, 0f, EXPAND_ANIMATION_MS, null);
     }
+
     private static void morph(boolean expand) { morph(expand, null); }
 
     private static void morph(boolean expand, Runnable completed) {
         if (pendingExit != null && completed == null) return;
-        hideCallMedium();
         MAIN.removeCallbacks(EXPAND);
         MAIN.removeCallbacks(COLLAPSE);
         MAIN.removeCallbacks(ROTATE);
@@ -1029,20 +1023,22 @@ public final class SystemUiAicyIsland {
         }
         if (isLocked(context)) { close(); return; }
         isExpanded = expand;
-        CameraIslandLayout view = (CameraIslandLayout) root;
+        final CameraIslandLayout view = (CameraIslandLayout) root;
+        final int width = expand ? bigW : smallW;
+        final int height = expand ? bigH : smallH;
+        final float top = expand ? Math.max(0, bigY - smallY) : 0f;
+        final float pillAlpha = expand ? 0f : 1f;
         if (running == null && pendingFrame == null
-                && view.visualWidth() == (expand ? bigW : smallW)
-                && view.visualHeight() == (expand ? bigH : smallH)
-                && view.visualTop() == (expand ? Math.max(0, bigY - smallY) : 0f)) {
+                && view.visualWidth() == width && view.visualHeight() == height && view.visualTop() == top
+                && fullContent.getAlpha() == 1f - pillAlpha && pillContent.getAlpha() == pillAlpha
+                && callMedium.getAlpha() == 0f) {
             if (!launchInProgress && pendingExit == null) schedule(expand);
             if (completed != null) completed.run();
             if (!expand) releaseSideWhenSettled(view);
             return;
         }
-        transition(expand ? bigW : smallW, expand ? bigH : smallH,
-                expand ? Math.max(0, bigY - smallY) : 0f,
-                dp(expand ? 27 : 16), expand ? 1f : 0f, expand ? 0f : 1f,
-                MORPH_MS, () -> {
+        transition(width, height, top, dp(expand ? 27 : 16), expand ? fullContent : null, pillAlpha,
+                expand ? EXPAND_ANIMATION_MS : COLLAPSE_ANIMATION_MS, () -> {
                     if (!launchInProgress && pendingExit == null) schedule(expand);
                     if (completed != null) completed.run();
                     if (!expand) releaseSideWhenSettled(view);
@@ -1058,39 +1054,46 @@ public final class SystemUiAicyIsland {
 
     /** All positions are LOCAL to a host whose y remains at the camera anchor. */
     private static void transition(float width, float height, float top,
-                                   float corner, float fullAlpha, float pillAlpha,
+                                   float corner, View expandedContent, float pillAlpha,
                                    long duration, Runnable completed) {
         if (root == null || lp == null || wm == null) {
             if (completed != null) completed.run();
             return;
         }
         final CameraIslandLayout view = (CameraIslandLayout) root;
-        final float fw = view.visualWidth(), fh = view.visualHeight();
-        final float fy = view.visualTop(), fr = radius;
-        final float fa = fullContent.getAlpha(), pa = pillContent.getAlpha();
+        final float startWidth = view.visualWidth(), startHeight = view.visualHeight();
+        final float startTop = view.visualTop(), startCorner = radius;
+        final View card = fullContent, pill = pillContent, callCard = callMedium;
+        final float startCardAlpha = card.getAlpha();
+        final float startPillAlpha = pill.getAlpha();
+        final float startCallAlpha = callCard.getAlpha();
+        final boolean expanding = expandedContent != null;
+        final float cardAlpha = expandedContent == card ? 1f : 0f;
+        final float callAlpha = expandedContent == callCard ? 1f : 0f;
         cancelFrame();
         final int token = generation;
         view.animate().cancel();
         view.setTranslationX(0f);
         view.setTranslationY(0f);
         view.setContentSizes(bigW, bigH, smallW, smallH);
-        fullContent.setVisibility(View.VISIBLE);
-        pillContent.setVisibility(View.VISIBLE);
         final WindowManager.LayoutParams params = lp;
         final int hostW = params.width;
         final int hostH = params.height;
         final ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
-        // Critically damped, monotone response: no spatial overshoot or bounce.
-        animator.setInterpolator(t -> (float) ((1d - (1d + 8d * t) * Math.exp(-8d * t))
-                / (1d - 9d * Math.exp(-8d))));
+        animator.setInterpolator(expanding ? SystemUiAicyIsland::expansionProgress
+                : t -> (float) ((1d - (1d + 8d * t) * Math.exp(-8d * t)) / (1d - 9d * Math.exp(-8d))));
         animator.setDuration(duration);
         animator.addUpdateListener(animation -> {
             if (token != generation || root != view) return;
             float t = (Float) animation.getAnimatedValue();
-            radius = mix(fr, corner, t);
-            view.setFrame(mix(fw, width, t), mix(fh, height, t), mix(fy, top, t), radius);
-            fullContent.setAlpha(mix(fa, fullAlpha, t));
-            pillContent.setAlpha(mix(pa, pillAlpha, t));
+            radius = mix(startCorner, corner, t);
+            view.setFrame(mix(startWidth, width, t), mix(startHeight, height, t), mix(startTop, top, t), radius);
+            // Make room for the expanded content while the compact badge fades out.
+            float enter = expanding ? fadeProgress(t, .18f, .90f) : t;
+            float leave = expanding ? fadeProgress(t, .04f, .55f) : t;
+            setContentAlpha(card, mix(startCardAlpha, cardAlpha, cardAlpha > 0f ? enter : leave));
+            setContentAlpha(pill, mix(startPillAlpha, pillAlpha, leave));
+            setContentAlpha(callCard, mix(startCallAlpha, callAlpha, callAlpha > 0f ? enter : leave));
         });
         animator.addListener(new AnimatorListenerAdapter() {
             @Override public void onAnimationEnd(Animator a) {
@@ -1098,14 +1101,13 @@ public final class SystemUiAicyIsland {
                 running = null;
                 radius = corner;
                 view.setFrame(width, height, top, corner);
-                fullContent.setAlpha(fullAlpha);
-                pillContent.setAlpha(pillAlpha);
-                fullContent.setVisibility(fullAlpha > 0f ? View.VISIBLE : View.INVISIBLE);
-                pillContent.setVisibility(pillAlpha > 0f ? View.VISIBLE : View.INVISIBLE);
+                setContentAlpha(card, cardAlpha);
+                setContentAlpha(pill, pillAlpha);
+                setContentAlpha(callCard, callAlpha);
                 // The host surface remains unchanged for its whole lifetime.
                 // Shrink the drawing and input region, never the WM window.
                 if (completed != null) completed.run();
-                if (root == view && fullAlpha == 0f && pillAlpha == 1f && !isExpanded && pendingExit == null && !launchInProgress
+                if (root == view && pillAlpha == 1f && !isExpanded && pendingExit == null && !launchInProgress
                         && running == null && pendingFrame == null
                         && (Math.abs(view.visualWidth()-smallW) > .5f || Math.abs(view.visualHeight()-smallH) > .5f))
                     morph(false);
@@ -1126,12 +1128,31 @@ public final class SystemUiAicyIsland {
         view.invalidate();
     }
 
+    private static float expansionProgress(float t) {
+        // Smooth at both endpoints, with the peak speed in the first half.
+        return smoothStep(t + .5f * t * (1f - t));
+    }
+
+    private static float fadeProgress(float progress, float start, float end) {
+        float t = Math.max(0f, Math.min(1f, (progress - start) / (end - start)));
+        return smoothStep(t);
+    }
+
+    private static float smoothStep(float t) {
+        return t * t * (3f - 2f * t);
+    }
+
+    private static void setContentAlpha(View content, float alpha) {
+        content.setAlpha(alpha);
+        content.setVisibility(alpha > 0f ? View.VISIBLE : View.INVISIBLE);
+    }
+
     private static void animateCompactArrival() {
         if (!(root instanceof CameraIslandLayout)) return;
         radius = smallH * .5f;
         ((CameraIslandLayout) root).setFrame(smallH, smallH, 0f, radius);
         pillContent.setAlpha(0f);
-        transition(smallW, smallH, 0f, dp(16), 0f, 1f, 240L, () -> schedule(false));
+        transition(smallW, smallH, 0f, dp(16), null, 1f, 240L, () -> schedule(false));
     }
 
     private static void animateArrival() {
@@ -1139,7 +1160,7 @@ public final class SystemUiAicyIsland {
         radius = smallH * .5f;
         ((CameraIslandLayout) root).setFrame(smallH, smallH, 0f, radius);
         pillContent.setAlpha(0f);
-        transition(smallW, smallH, 0f, dp(16), 0f, 1f, 240L,
+        transition(smallW, smallH, 0f, dp(16), null, 1f, 180L,
                 () -> MAIN.postDelayed(EXPAND, PILL_INTRO_MS));
     }
 
@@ -1163,7 +1184,7 @@ public final class SystemUiAicyIsland {
         pendingExit = completed;
         morph(false, () -> {
             if (root == null || aicyShowing) { finishPendingExit(); return; }
-            transition(smallH, smallH, 0f, smallH * .5f, 0f, 0f,
+            transition(smallH, smallH, 0f, smallH * .5f, null, 0f,
                     220L, SystemUiAicyIsland::finishPendingExit);
         });
     }
@@ -1349,10 +1370,9 @@ public final class SystemUiAicyIsland {
         ((CameraIslandLayout) root).setContentSizes(bigW, bigH, smallW, smallH);
         ((CameraIslandLayout) root).setFrame(smallW, smallH, 0f, radius);
         updateSide();
-        fullContent.setVisibility(View.INVISIBLE);
-        fullContent.setAlpha(0f);
-        pillContent.setVisibility(View.VISIBLE);
-        pillContent.setAlpha(1f);
+        setContentAlpha(fullContent, 0f);
+        setContentAlpha(pillContent, 1f);
+        setContentAlpha(callMedium, 0f);
         if (((CameraIslandLayout) root).isInputRegionReady())
             lp.flags &= ~WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
         try {
@@ -1704,10 +1724,7 @@ public final class SystemUiAicyIsland {
         // Real notifications persist; rotation changes only which source is in focus.
     }
 
-    /**
-     * Compact-to-expanded is continuous: no forced collapse on existing islands,
-     * no 580+360ms double wait. The same WindowManager view morphs in place.
-     */
+    /** Open from the current frame when a transition is already in progress. */
     private static void animatePillFirst() {
         MAIN.removeCallbacks(EXPAND);
         MAIN.removeCallbacks(ROTATE);
@@ -1952,7 +1969,6 @@ public final class SystemUiAicyIsland {
         pillContent = null;
         mediaControls = null;
         callMedium = null;
-        callMediumVisible = false;
         fullTitle = null;
         fullSubtitle = null;
         pillTitle = null;

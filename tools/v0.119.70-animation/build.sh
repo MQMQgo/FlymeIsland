@@ -85,8 +85,10 @@ with ZipFile(original_path) as original, ZipFile(assembled_path) as assembled, Z
         else:
             output.writestr(entry, original.read(entry))
     original_names = set(original.namelist())
+    resource_timestamp = original.getinfo("resources.arsc").date_time
     for entry in assembled.infolist():
         if entry.filename.startswith("res/") and entry.filename not in original_names:
+            entry.date_time = resource_timestamp
             output.writestr(entry, assembled.read(entry))
 PY
 

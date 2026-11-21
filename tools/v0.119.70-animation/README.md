@@ -21,3 +21,5 @@ bash tools/v0.119.70-animation/build.sh \
 ```
 
 用 Android SDK 的 `apksigner` 和自己的密钥签名。覆盖安装要求签名与已安装版本一致。公开分发完整 APK 时须按 GPL-3.0-only 提供对应源码。
+
+此 fork 的正式 Release 每次都附上对应版本的签名 APK。发布后核对附件的版本和 SHA-256。

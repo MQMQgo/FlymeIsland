@@ -36,6 +36,9 @@ def contact_icon(method):
         method, "    invoke-virtual {v1, p2}, Landroid/widget/ImageView;->setImageBitmap(Landroid/graphics/Bitmap;)V",
         f"    invoke-static {{v1, p2}}, {MASK}->setContactPhoto(Landroid/widget/ImageView;Landroid/graphics/Bitmap;)V",
     )
+    # Keep the package name in p1 when the command is neither WECHAT nor QQ.
+    method = replace_once(method, "    move-result p1\n\n    if-eqz p1, :cond_4\n",
+                          "    move-result p2\n\n    if-eqz p2, :cond_4\n")
     method = replace_once(method, "    :cond_4\n    const/4 p1, 0x0\n", "    :cond_4\n")
     return replace_block(method, "    .line 2429\n    :goto_1\n", "    .line 2439\n", f"""    .line 2429
     :goto_1
@@ -51,6 +54,14 @@ def restore_lyric_artwork(method, view, bitmap):
         method, f"    invoke-virtual {{{view}, {bitmap}}}, Landroid/widget/ImageView;->setImageBitmap(Landroid/graphics/Bitmap;)V",
         f"    invoke-static {{{view}, {bitmap}}}, {ISLAND}->setLyricArtwork(Landroid/widget/ImageView;Landroid/graphics/Bitmap;)V",
     )
+
+
+def lyric_icon(method):
+    method = restore_lyric_artwork(method, "v3", "v2")
+    method = replace_block(method, "    .line 2769\n    :cond_9\n", "    .line 2773\n", "    :cond_9\n")
+    # The frame radius still needs half the height after removing the icon outline.
+    return replace_once(method, "    mul-float/2addr v1, v9\n",
+                        "    const/high16 v9, 0x3f000000    # 0.5f\n\n    mul-float/2addr v1, v9\n")
 
 
 LYRIC_ARTWORK = f""".method private static setLyricArtwork(Landroid/widget/ImageView;Landroid/graphics/Bitmap;)V
@@ -79,11 +90,7 @@ def patch_island(smali):
         "Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z", notification_icon,
     )
     smali = edit_method(
-        smali, ".method private static showLyricMedium()V",
-        lambda method: replace_block(
-            restore_lyric_artwork(method, "v3", "v2"), "    .line 2769\n    :cond_9\n", "    .line 2773\n",
-            "    :cond_9\n",
-        ),
+        smali, ".method private static showLyricMedium()V", lyric_icon,
     )
     smali = edit_method(
         smali, ".method private static updateLyricMedium()V",

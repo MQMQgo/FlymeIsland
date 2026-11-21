@@ -75,7 +75,9 @@ OPENING_TIMING = """    move/from16 v19, v0
 
     sub-float v32, v8, v6
 
-    invoke-static/range {v20 .. v32}, Lio/github/flymeisland/diagnostic/ExpansionTiming;->applyIfOpening(Landroid/animation/ValueAnimator;JFFFFFFFZIF)Z
+    sget-object v33, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->visibleKey:Ljava/lang/String;
+
+    invoke-static/range {v20 .. v33}, Lio/github/flymeisland/diagnostic/ExpansionTiming;->applyIfOpening(Landroid/animation/ValueAnimator;JFFFFFFFZIFLjava/lang/String;)Z
 
     move-result v6
 
@@ -139,7 +141,7 @@ CONTENT_PROGRESS = (
 
 
 def time_expansion(method):
-    method = replace_once(method, "    .locals 20", "    .locals 33")
+    method = replace_once(method, "    .locals 20", "    .locals 34")
     return replace_once(method, DEFAULT_TIMING, OPENING_TIMING)
 
 
@@ -162,31 +164,6 @@ def animate_frame(method):
     return method
 
 
-MUSIC_TICKER = """    if-eqz p0, :notification_ticker
-
-    iget-object v0, p0, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland$Notice;->command:Ljava/lang/String;
-
-    const-string v1, "MUSIC"
-
-    invoke-virtual {v1, v0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
-
-    move-result v0
-
-    if-eqz v0, :notification_ticker
-
-    sget-object v0, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->compactTextSlot:Landroid/widget/FrameLayout;
-
-    iget-object v1, p0, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland$Notice;->sender:Ljava/lang/String;
-
-    invoke-static {v0, v1}, Lio/github/flymeisland/diagnostic/CompactMusicTitle;->setTrack(Landroid/widget/FrameLayout;Ljava/lang/String;)V
-
-    invoke-static {}, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->refreshCompactMessageMode()V
-
-    return-void
-
-    :notification_ticker
-"""
-
 MUSIC_MODE = """    sget-object v0, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->mediaWave:Lio/github/flymeisland/diagnostic/MediaWaveView;
 
     if-eqz v0, :notification_mode
@@ -196,20 +173,6 @@ MUSIC_MODE = """    sget-object v0, Lio/github/flymeisland/diagnostic/SystemUiAi
     move-result v0
 
     if-nez v0, :notification_mode
-
-    invoke-static {}, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->refreshCompactMusicTitle()V
-
-    return-void
-
-    :notification_mode
-    sget-object v0, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->compactTextSlot:Landroid/widget/FrameLayout;
-
-    invoke-static {v0}, Lio/github/flymeisland/diagnostic/CompactMusicTitle;->hide(Landroid/widget/FrameLayout;)V
-
-"""
-
-MUSIC_REFRESH = """.method private static refreshCompactMusicTitle()V
-    .locals 5
 
     sget-object v0, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->pillTitle:Landroid/widget/TextView;
 
@@ -227,107 +190,164 @@ MUSIC_REFRESH = """.method private static refreshCompactMusicTitle()V
 
     invoke-virtual {v0, v1}, Landroid/view/View;->setVisibility(I)V
 
-    sget-object v0, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->compactTextSlot:Landroid/widget/FrameLayout;
+    return-void
+
+    :notification_mode
+"""
+
+COMPACT_WIDTH = """.method private static compactPillWidth(Ljava/lang/String;I)I
+    .locals 1
+
+    const-string v0, "MUSIC"
+
+    invoke-virtual {v0, p0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+
+    move-result v0
 
     if-eqz v0, :done
 
-    sget-object v1, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->root:Landroid/widget/FrameLayout;
+    const/16 v0, 0x70    # 112 dp
 
-    if-eqz v1, :done
+    invoke-static {p1, v0}, Ljava/lang/Math;->min(II)I
 
-    invoke-static {v1}, Lio/github/flymeisland/diagnostic/CameraTextAvoid;->refresh(Landroid/view/View;)V
-
-    new-instance v2, Landroid/graphics/Rect;
-
-    invoke-direct {v2}, Landroid/graphics/Rect;-><init>()V
-
-    const/4 v3, 0x2
-
-    new-array v3, v3, [I
-
-    invoke-static {v0, v2, v3}, Lio/github/flymeisland/diagnostic/CameraTextAvoid;->local(Landroid/view/View;Landroid/graphics/Rect;[I)Z
-
-    move-result v3
-
-    if-nez v3, :camera_ready
-
-    invoke-virtual {v2}, Landroid/graphics/Rect;->setEmpty()V
-
-    :camera_ready
-    sget-boolean v3, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->isExpanded:Z
-
-    if-nez v3, :pause_scroll
-
-    sget-object v4, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->pendingExit:Ljava/lang/Runnable;
-
-    if-nez v4, :pause_scroll
-
-    const/4 v3, 0x1
-
-    goto :place_title
-
-    :pause_scroll
-    const/4 v3, 0x0
-
-    :place_title
-    invoke-static {v0, v1, v2, v3}, Lio/github/flymeisland/diagnostic/CompactMusicTitle;->place(Landroid/widget/FrameLayout;Landroid/view/View;Landroid/graphics/Rect;Z)V
+    move-result p1
 
     :done
-    return-void
+    return p1
 .end method"""
 
+CLAMP_SHOW_WIDTH = """    move-object/from16 v2, p1
 
-island = Path(sys.argv[1])
-smali = island.read_text(encoding="utf-8")
-smali = replace_once(smali, "PILL_INTRO_MS:J = 0x6eL", "PILL_INTRO_MS:J = 0x41L")
-smali = edit_method(
-    smali,
-    ".method private static animateArrival()V",
-    lambda method: replace_once(method, "const-wide/16 v7, 0xf0", "const-wide/16 v7, 0xb4"),
-)
-for signature in (
-    ".method private static animatePillFirst()V",
-    ".method static synthetic lambda$animateArrival$38()V",
-):
-    smali = edit_method(
-        smali, signature,
-        lambda method: replace_once(method, "const-wide/16 v2, 0x6e", "const-wide/16 v2, 0x41"),
+    move/from16 v0, p8
+
+    invoke-static {v2, v0}, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->compactPillWidth(Ljava/lang/String;I)I
+
+    move-result v0
+
+    move/from16 p8, v0
+"""
+
+BIND_WIDTH = """    :cond_20
+    iget v4, p0, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland$Notice;->pillWidth:I
+"""
+
+CLAMP_BIND_WIDTH = BIND_WIDTH + """
+    iget-object v5, p0, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland$Notice;->command:Ljava/lang/String;
+
+    invoke-static {v5, v4}, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->compactPillWidth(Ljava/lang/String;I)I
+
+    move-result v4
+"""
+
+PROMOTE_MUSIC = """    .line 1708
+    if-eqz v9, :animate_promotion
+
+    sget-boolean v0, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->isExpanded:Z
+
+    if-nez v0, :cond_7d
+
+    sget-boolean v0, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->musicAutoExpand:Z
+
+    if-nez v0, :cond_7d
+
+    :animate_promotion
+"""
+
+RESTORE_COMPACT = """    .line 1930
+    :cond_aa
+    const/16 v23, 0x0
+
+    :try_start_d
+"""
+
+RESTORE_MUSIC = RESTORE_COMPACT + """    invoke-virtual {v11, v2}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+
+    move-result v0
+
+    if-eqz v0, :schedule_restored
+
+    invoke-static {}, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;->animateCompactArrival()V
+
+    goto :goto_3e
+
+    :schedule_restored
+"""
+
+WAVE_STYLE_DEFAULTS = """    :array_0
+    .array-data 4
+        0x5
+        0x3
+        0x3
+        0x10
+        0xc8
+        0x0
+        0x1
+        0x0
+        0x0
+    .end array-data"""
+
+
+def animate_music_arrival(method):
+    method = replace_once(
+        method,
+        "    .line 1390\n    move-object/from16 v1, p0\n\n    move-object/from16 v2, p1\n",
+        "    .line 1390\n    move-object/from16 v1, p0\n\n" + CLAMP_SHOW_WIDTH,
     )
-smali = edit_method(
-    smali,
-    ".method private static transition(FFFFFFJLjava/lang/Runnable;FZ)V",
-    time_expansion,
-)
-smali = edit_method(
-    smali,
-    ".method static synthetic lambda$transition$36(ILio/github/flymeisland/diagnostic/CameraIslandLayout;"
-    "FFFFFFFFFFFFFFLandroid/animation/ValueAnimator;)V",
-    animate_frame,
-)
-smali = edit_method(
-    smali,
-    ".method private static configureCompactTicker(Lio/github/flymeisland/diagnostic/SystemUiAicyIsland$Notice;Ljava/lang/String;)V",
-    lambda method: replace_once(method, "    .line 4876\n", MUSIC_TICKER + "    .line 4876\n"),
-)
-smali = edit_method(
-    smali,
-    ".method private static refreshCompactMessageMode()V",
-    lambda method: replace_once(method, "    .line 4890\n    :cond_0\n",
-                                "    .line 4890\n    :cond_0\n" + MUSIC_MODE),
-)
-refresh_mode = (
-    "    invoke-static {}, Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;"
-    "->refreshCompactMessageMode()V\n"
-)
-smali = edit_method(
-    smali,
-    ".method private static refreshTickerCutoutGeometry()V",
-    lambda method: replace_once(method, "    .line 4384\n", refresh_mode + "\n    .line 4384\n"),
-)
-smali = edit_method(
-    smali,
-    ".method private static refreshCompactSafeArea()V",
-    lambda method: replace_once(method, "    .line 4379\n" + refresh_mode + "\n", ""),
-)
-smali += "\n" + MUSIC_REFRESH + "\n"
-island.write_text(smali, encoding="utf-8")
+    method = replace_once(method, "    .line 1708\n    if-nez v9, :cond_7d\n", PROMOTE_MUSIC)
+    return replace_once(method, RESTORE_COMPACT, RESTORE_MUSIC)
+
+
+if __name__ == "__main__":
+    island = Path(sys.argv[1])
+    smali = island.read_text(encoding="utf-8")
+    smali = replace_once(smali, "PILL_INTRO_MS:J = 0x6eL", "PILL_INTRO_MS:J = 0x41L")
+    smali = edit_method(
+        smali,
+        ".method private static animateArrival()V",
+        lambda method: replace_once(method, "const-wide/16 v7, 0xf0", "const-wide/16 v7, 0xb4"),
+    )
+    for signature in (
+        ".method private static animatePillFirst()V",
+        ".method static synthetic lambda$animateArrival$38()V",
+    ):
+        smali = edit_method(
+            smali, signature,
+            lambda method: replace_once(method, "const-wide/16 v2, 0x6e", "const-wide/16 v2, 0x41"),
+        )
+    smali = edit_method(
+        smali,
+        ".method private static transition(FFFFFFJLjava/lang/Runnable;FZ)V",
+        time_expansion,
+    )
+    smali = edit_method(
+        smali,
+        ".method static synthetic lambda$transition$36(ILio/github/flymeisland/diagnostic/CameraIslandLayout;"
+        "FFFFFFFFFFFFFFLandroid/animation/ValueAnimator;)V",
+        animate_frame,
+    )
+    smali = edit_method(
+        smali,
+        ".method private static refreshCompactMessageMode()V",
+        lambda method: replace_once(method, "    .line 4890\n    :cond_0\n",
+                                    "    .line 4890\n    :cond_0\n" + MUSIC_MODE),
+    )
+    smali = edit_method(
+        smali,
+        ".method private static bindNotice(Lio/github/flymeisland/diagnostic/SystemUiAicyIsland$Notice;Z)V",
+        lambda method: replace_once(method, BIND_WIDTH, CLAMP_BIND_WIDTH),
+    )
+    smali = edit_method(
+        smali,
+        ".method private static show(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;"
+        "Ljava/lang/String;[BLandroid/app/PendingIntent;Ljava/lang/String;Ljava/lang/String;IIIIIZJZI)Ljava/lang/String;",
+        animate_music_arrival,
+    )
+    smali += "\n" + COMPACT_WIDTH + "\n"
+    island.write_text(smali, encoding="utf-8")
+
+    wave_style = island.with_name("WaveStylePrefs.smali")
+    rotation_enabled = WAVE_STYLE_DEFAULTS.replace("        0x1\n        0x0", "        0x1\n        0x1")
+    wave_style.write_text(
+        replace_once(wave_style.read_text(encoding="utf-8"), WAVE_STYLE_DEFAULTS, rotation_enabled),
+        encoding="utf-8",
+    )

@@ -1,8 +1,8 @@
 from struct import pack_into, unpack_from
 
 
-VERSION_CODE = 202
-VERSION_NAME = "0.119.70-fork-jelly-music"
+VERSION_CODE = 203
+VERSION_NAME = "0.119.70-fork-compact-music"
 
 
 def stamp_manifest_version(manifest):

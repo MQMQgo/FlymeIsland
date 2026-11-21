@@ -7,23 +7,27 @@ final class ExpansionTiming implements TimeInterpolator {
     private static final long MIN_OPENING_MS = 260L;
     private static final long DURATION_MS = 340L;
     private static final long COMPACT_DURATION_MS = 270L;
+    private static final long MUSIC_ARRIVAL_MS = 285L;
     private static final float WIDTH_PEAK_PROGRESS = .70f;
     private static final float HEIGHT_PEAK_PROGRESS = .82f;
     private static final float WIDTH_RECOIL_PROGRESS = .91f;
     private final int widthLimit;
     private final float heightLimit;
     private final boolean compactArrival;
+    private final boolean musicArrival;
 
-    private ExpansionTiming(int widthLimit, float heightLimit, boolean compactArrival) {
+    private ExpansionTiming(int widthLimit, float heightLimit,
+            boolean compactArrival, boolean musicArrival) {
         this.widthLimit = widthLimit;
         this.heightLimit = heightLimit;
         this.compactArrival = compactArrival;
+        this.musicArrival = musicArrival;
     }
 
     static boolean applyIfOpening(ValueAnimator animator, long duration,
             float width, float height, float startWidth, float startHeight,
             float cardAlpha, float pillAlpha, float secondaryAlpha, boolean callCard,
-            int widthLimit, float heightLimit) {
+            int widthLimit, float heightLimit, String visibleKey) {
         boolean grows = width > startWidth + .5f || height > startHeight + .5f;
         boolean opensCard = duration >= MIN_OPENING_MS && pillAlpha == 0f
                 && (cardAlpha > 0f || secondaryAlpha > 0f || callCard);
@@ -32,8 +36,10 @@ final class ExpansionTiming implements TimeInterpolator {
         if (!grows || (!opensCard && !compactArrival)) {
             return false;
         }
-        animator.setInterpolator(new ExpansionTiming(widthLimit, heightLimit, compactArrival));
-        animator.setDuration(compactArrival ? COMPACT_DURATION_MS : DURATION_MS);
+        boolean musicArrival = compactArrival && "island:media".equals(visibleKey);
+        animator.setInterpolator(new ExpansionTiming(widthLimit, heightLimit, compactArrival, musicArrival));
+        animator.setDuration(musicArrival ? MUSIC_ARRIVAL_MS
+                : compactArrival ? COMPACT_DURATION_MS : DURATION_MS);
         return true;
     }
 
@@ -45,13 +51,24 @@ final class ExpansionTiming implements TimeInterpolator {
             float progress, boolean vertical) {
         TimeInterpolator interpolator = animator.getInterpolator();
         float travel = target - start;
-        if (!(interpolator instanceof ExpansionTiming) || travel <= .5f) {
+        if (!(interpolator instanceof ExpansionTiming)) {
             return start + travel * progress;
         }
         ExpansionTiming timing = (ExpansionTiming) interpolator;
+        boolean musicHeight = timing.musicArrival && vertical && Math.abs(travel) <= .5f;
+        if (travel <= .5f && !musicHeight) {
+            return start + travel * progress;
+        }
         float limit = vertical ? timing.heightLimit : timing.widthLimit;
         float stretch = travel * (vertical ? .16f : .08f);
         float cap = target * (vertical ? .12f : .05f);
+        if (musicHeight) {
+            stretch = target * .16f;
+            cap = stretch;
+        } else if (timing.musicArrival && !vertical) {
+            stretch = travel * .16f;
+            cap = target * .10f;
+        }
         float overshoot = Math.max(0f, Math.min(Math.min(stretch, cap), limit - target));
         float peakProgress = vertical ? HEIGHT_PEAK_PROGRESS : WIDTH_PEAK_PROGRESS;
         if (progress < peakProgress) {
@@ -66,7 +83,7 @@ final class ExpansionTiming implements TimeInterpolator {
             return target + overshoot * (1f - smoothStep(settle));
         }
         // Recoil inward so the stretch is visible even at the width limit.
-        float recoil = Math.min(travel * .15f, target * .055f);
+        float recoil = Math.min(travel * .15f, target * (timing.musicArrival ? .075f : .055f));
         if (progress < WIDTH_RECOIL_PROGRESS) {
             float settle = (progress - peakProgress) / (WIDTH_RECOIL_PROGRESS - peakProgress);
             return target + overshoot - (overshoot + recoil) * smoothStep(settle);

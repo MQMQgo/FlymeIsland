@@ -4,7 +4,9 @@
 
 主音乐胶囊宽度上限为 112 dp，镜头两侧分别显示封面和波形。播放时默认旋转封面。胶囊首次出现或恢复显示时，用 285 毫秒弹开并轻微回弹。横屏时收起音乐胶囊，回到竖屏后按当前播放状态恢复。
 
-二级胶囊、展开卡片和消息列表中的应用图标采用 Android 系统图标遮罩。顶栏小胶囊保持圆形。可在「关于与更新」确认测试包版本 `0.119.70-fork-portrait-music`，Android `versionCode` 为 `205`。
+二级胶囊、展开卡片和消息列表中的应用图标采用 Android 系统图标遮罩。顶栏小胶囊使用圆形遮罩。
+
+`0.119.70-fork.206` 的 Android `versionCode` 为 `206`。媒体设置和展开卡片移除了歌词相关入口。「关于与更新」链接到 `MQMQgo/FlymeIsland`，并列出 sisjxj 和 MQMQgo。
 
 在 Linux 上使用 JDK 17、Python 3、Apktool 3.0.3、Android SDK 36 和 Build-Tools 36.0.0。脚本核对原版 APK 的 SHA-256，并生成可供签名的 APK。
 

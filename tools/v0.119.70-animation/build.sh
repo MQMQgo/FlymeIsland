@@ -36,7 +36,7 @@ mkdir -p "$work/classes" "$work/dex"
 
 javac --release 8 -cp "$android_jar" -d "$work/classes" \
     "$patch_dir/ExpansionTiming.java" "$patch_dir/CapsuleIconMask.java" "$patch_dir/MediaActionFilter.java" \
-    "$patch_dir/ChargingPowerDisplay.java"
+    "$patch_dir/ChargingPowerDisplay.java" "$patch_dir/CameraCutoutBounds.java"
 "$build_tools/d8" --min-api 28 --lib "$android_jar" --output "$work/dex" \
     "$work/classes/$package/"*.class
 python3 - "$original_apk" "$work/dex/classes.dex" "$work/helper.apk" <<'PY'
@@ -61,6 +61,7 @@ python3 -B "$patch_dir/apply_icons.py" "$target"
 python3 -B "$patch_dir/apply_orientation.py" "$target"
 python3 -B "$patch_dir/apply_release_ui.py" "$target"
 python3 -B "$patch_dir/apply_charging.py" "$target"
+python3 -B "$patch_dir/apply_preview_cutout.py" "$target"
 python3 -B "$patch_dir/apply_launcher_icon.py" "$work/app"
 java -jar "$apktool_jar" build --frame-path "$work/framework" \
     -o "$work/assembled.apk" "$work/app"

@@ -1,20 +1,12 @@
 from pathlib import Path
 import sys
 
-from apply_animation import edit_method, replace_once
+from apply_animation import edit_method, replace_block, replace_once
 
 
 ISLAND = "Lio/github/flymeisland/diagnostic/SystemUiAicyIsland;"
 MASK = "Lio/github/flymeisland/diagnostic/CapsuleIconMask;"
 PACKAGE_ICON = MASK + "->setPackageIcon(Landroid/widget/ImageView;Landroid/content/Context;Ljava/lang/String;)V"
-
-
-def replace_block(method, start, end, replacement=""):
-    if method.count(start) != 1 or method.count(end) != 1:
-        raise ValueError(f"Expected one block between {start!r} and {end!r}")
-    start_at = method.index(start)
-    end_at = method.index(end, start_at)
-    return method[:start_at] + replacement + method[end_at:]
 
 
 def align_secondary_contents(method):

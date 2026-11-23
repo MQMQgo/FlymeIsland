@@ -8,6 +8,14 @@ def replace_once(text, old, new):
     return text.replace(old, new, 1)
 
 
+def replace_block(method, start, end, replacement=""):
+    if method.count(start) != 1 or method.count(end) != 1:
+        raise ValueError(f"Expected one block between {start!r} and {end!r}")
+    start_at = method.index(start)
+    end_at = method.index(end, start_at)
+    return method[:start_at] + replacement + method[end_at:]
+
+
 def edit_method(text, signature, edit):
     if text.count(signature + "\n") != 1:
         raise ValueError(f"Expected exactly one method {signature}")

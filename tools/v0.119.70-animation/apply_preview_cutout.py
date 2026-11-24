@@ -11,6 +11,7 @@ TICKER = PACKAGE + "CameraSafeTickerView;"
 OBSERVER = "Landroid/view/ViewTreeObserver;"
 LISTENER = "Landroid/view/ViewTreeObserver$OnPreDrawListener;"
 INTERSECTS = BOUNDS + "->intersectsViewport(Landroid/graphics/Rect;II)Z"
+CENTERED_TEXT_TOP = BOUNDS + "->centeredTextTop(Landroid/text/Layout;I)F"
 
 
 def read_screen_bounds(method):
@@ -51,7 +52,16 @@ def local_overlap(method):
 
 def patch_avoid(smali):
     smali = edit_method(smali, ".method private static refreshGeometry(Landroid/view/View;)V", read_screen_bounds)
-    return edit_method(smali, ".method static local(Landroid/view/View;Landroid/graphics/Rect;[I)Z", local_overlap)
+    smali = edit_method(smali, ".method static local(Landroid/view/View;Landroid/graphics/Rect;[I)Z", local_overlap)
+    return edit_method(smali, ".method private static rebuild()V", tighten_automatic_margins)
+
+
+def tighten_automatic_margins(method):
+    # Leave 2 dp on each side and 1 dp above and below the detected opening.
+    method = replace_once(method, "    const/high16 v3, 0x40c00000    # 6.0f",
+                          "    const/high16 v3, 0x40800000    # 4.0f")
+    return replace_once(method, "    const/high16 v4, 0x40800000    # 4.0f",
+                        "    const/high16 v4, 0x40000000    # 2.0f")
 
 
 def track_preview(smali):
@@ -175,16 +185,46 @@ def track_preview(smali):
 """
 
 
-def patch_ticker(smali):
-    smali = track_preview(smali)
-    # Clip the text row after resolving the cutout shape. Comparing full
-    # bounds also keeps an unchanged, partially visible hole from restarting the ticker.
-    smali = edit_method(smali, ".method public setCameraCutouts([Landroid/graphics/Rect;Z)V",
-                        lambda method: replace_once(method,
-                            "    invoke-virtual {v4, v2, v2, v3, v5}, Landroid/graphics/Rect;->intersect(IIII)Z\n",
-                            f"    invoke-static {{v4, v3, v5}}, {INTERSECTS}\n"))
-    smali = edit_method(smali, ".method private mergedCameraX()[I",
-                        lambda method: replace_once(method, "    if-le v4, v0, :cond_3\n", f"""    invoke-static {{v3, v0}}, Ljava/lang/Math;->max(II)I
+def project_text_row(method):
+    method = replace_once(method, "    .locals 9\n", "    .locals 11\n")
+    # Use the same vertical position in measurement and drawing, including
+    # when the preview fits only part of a tall text line.
+    method = replace_once(method, "    move v4, v3\n", f"""    move v4, v3
+
+    iget-object v5, p0, {TICKER}->layout:Landroid/text/StaticLayout;
+
+    if-eqz v5, :cond_3
+
+    invoke-virtual {{p0}}, {TICKER}->getHeight()I
+
+    move-result v6
+
+    invoke-static {{v5, v6}}, {CENTERED_TEXT_TOP}
+
+    move-result v6
+
+    invoke-virtual {{v5, v3}}, Landroid/text/StaticLayout;->getLineTop(I)I
+
+    move-result v9
+
+    int-to-float v9, v9
+
+    add-float/2addr v9, v6
+
+    invoke-virtual {{v5, v3}}, Landroid/text/StaticLayout;->getLineBottom(I)I
+
+    move-result v10
+
+    int-to-float v10, v10
+
+    add-float/2addr v10, v6
+""")
+    method = replace_block(method, "    .line 283\n", "    move-result v5\n\n    if-nez v5, :cond_1\n",
+                           f"""    .line 284
+    invoke-static {{v6, v9, v10}}, {AVOID}->rowBounds(Landroid/graphics/Rect;FF)Z
+
+""")
+    return replace_once(method, "    if-le v4, v0, :cond_3\n", f"""    invoke-static {{v3, v0}}, Ljava/lang/Math;->max(II)I
 
     move-result v0
 
@@ -197,7 +237,63 @@ def patch_ticker(smali):
     move-result v4
 
     if-le v4, v0, :cond_3
-"""))
+""")
+
+
+def draw_position(method):
+    method = replace_once(method, "    if-nez v2, :cond_5\n", f"""    if-nez v2, :cond_5
+
+    iget-boolean v2, p0, {TICKER}->scrollEnabled:Z
+
+    if-eqz v2, :cond_1
+""")
+    # The full layout is deliberately wide enough to shape the entire message.
+    # Anchor its line, so that buffer does not shift the drawn text.
+    method = replace_block(method, "    .line 348\n    :goto_2\n", "    .line 349\n", f"""    .line 348
+    :goto_2
+    iget-object v6, p0, {TICKER}->layout:Landroid/text/StaticLayout;
+
+    if-ne v5, v6, :align_text_vertically
+
+    invoke-virtual {{v5, v4}}, Landroid/text/StaticLayout;->getLineLeft(I)F
+
+    move-result v6
+
+    sub-float/2addr v2, v6
+
+    :align_text_vertically
+    invoke-virtual {{p0}}, {TICKER}->getHeight()I
+
+    move-result v6
+
+    invoke-static {{v5, v6}}, {CENTERED_TEXT_TOP}
+
+    move-result v6
+
+""")
+    return replace_once(
+        method,
+        f"    iget v13, p0, {TICKER}->density:F\n",
+        f"""    iget v13, p0, {TICKER}->density:F
+
+    const/high16 v11, 0x3f000000    # two dp of fade on each edge
+
+    mul-float/2addr v13, v11
+""",
+    )
+
+
+def patch_ticker(smali):
+    smali = track_preview(smali)
+    # Keep the full rect for circular clipping and comparisons across frames.
+    smali = edit_method(smali, ".method public setCameraCutouts([Landroid/graphics/Rect;Z)V",
+                        lambda method: replace_once(method,
+                            "    invoke-virtual {v4, v2, v2, v3, v5}, Landroid/graphics/Rect;->intersect(IIII)Z\n",
+                            f"    invoke-static {{v4, v3, v5}}, {INTERSECTS}\n"))
+    smali = edit_method(smali, ".method private mergedCameraX()[I", project_text_row)
+    smali = edit_method(smali, ".method private virtualWidth()I",
+                        lambda method: replace_block(method, "    if-nez v0, :cond_1\n",
+                            "    invoke-static {v3, v1}, Ljava/lang/Math;->max(II)I\n"))
     # The ticker can show its cutout-aware ellipsis even when scrolling is disabled.
     smali = edit_method(smali, ".method public canRenderMessage()Z",
                         lambda method: replace_block(method, "    .line 171\n", "    .line 170\n    :cond_3\n", """    .line 171
@@ -207,13 +303,7 @@ def patch_ticker(smali):
     return v0
 
 """))
-    return edit_method(smali, ".method protected onDraw(Landroid/graphics/Canvas;)V",
-                       lambda method: replace_once(method, "    if-nez v2, :cond_5\n", f"""    if-nez v2, :cond_5
-
-    iget-boolean v2, p0, {TICKER}->scrollEnabled:Z
-
-    if-eqz v2, :cond_1
-"""))
+    return edit_method(smali, ".method protected onDraw(Landroid/graphics/Canvas;)V", draw_position)
 
 
 def patch_island(smali):

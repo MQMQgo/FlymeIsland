@@ -1,7 +1,10 @@
 package io.github.flymeisland.diagnostic;
 
+import android.graphics.Path;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.os.Build;
+import android.text.Layout;
 import android.view.Display;
 import android.view.DisplayCutout;
 import android.view.View;
@@ -19,7 +22,7 @@ final class CameraCutoutBounds {
         if (Build.VERSION.SDK_INT >= 29 && display != null) {
             DisplayCutout cutout = display.getCutout();
             if (cutout != null) {
-                List<Rect> displayBounds = cutout.getBoundingRects();
+                List<Rect> displayBounds = displayBounds(cutout);
                 if (!displayBounds.isEmpty()) {
                     return displayBounds;
                 }
@@ -50,9 +53,43 @@ final class CameraCutoutBounds {
         return screenBounds;
     }
 
+    private static List<Rect> displayBounds(DisplayCutout cutout) {
+        List<Rect> bounds = cutout.getBoundingRects();
+        if (Build.VERSION.SDK_INT < 31 || bounds.isEmpty()) {
+            return bounds;
+        }
+        Path outline = cutout.getCutoutPath();
+        if (outline == null || outline.isEmpty()) {
+            return bounds;
+        }
+
+        // The rectangle can cover more than the physical opening. Use the portion
+        // of the display-coordinate outline inside each reported cutout.
+        List<Rect> exact = new ArrayList<>(bounds.size());
+        Path region = new Path();
+        RectF enclosing = new RectF();
+        for (Rect bound : bounds) {
+            region.rewind();
+            region.addRect(bound.left, bound.top, bound.right, bound.bottom, Path.Direction.CW);
+            if (region.op(outline, Path.Op.INTERSECT) && !region.isEmpty()) {
+                region.computeBounds(enclosing, true);
+                Rect tightened = new Rect();
+                enclosing.roundOut(tightened);
+                exact.add(tightened.intersect(bound) ? tightened : bound);
+            } else {
+                exact.add(bound);
+            }
+        }
+        return exact;
+    }
+
     static boolean intersectsViewport(Rect bounds, int width, int height) {
         return width > 0 && height > 0 && !bounds.isEmpty()
                 && bounds.left < width && bounds.right > 0
                 && bounds.top < height && bounds.bottom > 0;
+    }
+
+    static float centeredTextTop(Layout layout, int viewHeight) {
+        return Math.max(0f, (viewHeight - layout.getHeight()) * .5f);
     }
 }

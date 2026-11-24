@@ -5,7 +5,9 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Path;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.icu.text.BreakIterator;
 import android.text.Layout;
@@ -16,6 +18,7 @@ import android.text.TextUtils;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.view.animation.LinearInterpolator;
+import java.util.Arrays;
 
 public final class CameraSafeTickerView extends View {
     private static final int TEXT_SIZE_SP = 11;
@@ -49,8 +52,10 @@ public final class CameraSafeTickerView extends View {
     private StaticLayout firstLayout;
     private StaticLayout secondLayout;
     private ValueAnimator animator;
+    private float[] characterEdges;
     private float textWidth;
-    private float textOffset;
+    private float scrollPosition;
+    private float scrollDistance;
     private boolean geometryReliable;
     private boolean scrollEnabled = true;
     private boolean compactActive;
@@ -75,6 +80,7 @@ public final class CameraSafeTickerView extends View {
         text = value;
         revision = identity;
         scrollFinished = false;
+        characterEdges = null;
         setContentDescription(value);
         textWidth = Layout.getDesiredWidth(value, paint);
         fullLayout = singleLine(value, (int) Math.ceil(textWidth + paint.getTextSize() * 2f), false);
@@ -151,6 +157,7 @@ public final class CameraSafeTickerView extends View {
         if (!rowHole.isEmpty() && fullLayout != null && textWidth > lane.width()) {
             splitPreview(leftToRight);
         }
+        scrollDistance = measureScrollDistance();
         resetScroll();
     }
 
@@ -169,17 +176,16 @@ public final class CameraSafeTickerView extends View {
         if (!characters.isBoundary(end)) {
             end = characters.preceding(end);
         }
+        while (end > 0 && Layout.getDesiredWidth(text, 0, end, paint) > firstWidth) {
+            end = characters.preceding(end);
+        }
         if (end <= 0 || end >= text.length()) {
             return;
         }
         String first = text.substring(0, end);
         String second = text.substring(end);
-        if (Layout.getDesiredWidth(first, paint) > firstWidth
-                || (scrollEnabled && Layout.getDesiredWidth(second, paint) > secondWidth)) {
-            return;
-        }
         StaticLayout prefix = singleLine(first, firstWidth, false);
-        StaticLayout suffix = singleLine(second, secondWidth, !scrollEnabled);
+        StaticLayout suffix = singleLine(second, secondWidth, true);
         if (prefix == null || suffix == null) {
             return;
         }
@@ -193,6 +199,54 @@ public final class CameraSafeTickerView extends View {
         }
         firstLayout = prefix;
         secondLayout = suffix;
+    }
+
+    private float measureScrollDistance() {
+        if (!scrollEnabled || fullLayout == null || lane.width() <= 0) {
+            return 0f;
+        }
+        if (secondLayout == null) {
+            return Math.max(0f, textWidth - lane.width());
+        }
+        // Stop at the first whole-character boundary that lets the tail fit.
+        float tailStart = Math.max(0f, textWidth - secondLane.width());
+        return Math.max(0f, characterEdge(tailStart, true) - firstLane.width());
+    }
+
+    private float characterEdge(float position, boolean roundUp) {
+        if (characterEdges == null) {
+            characterEdges = measureCharacterEdges();
+        }
+        int index = Arrays.binarySearch(characterEdges, position);
+        if (index < 0) {
+            index = -index - (roundUp ? 1 : 2);
+        }
+        return characterEdges[Math.max(0, Math.min(index, characterEdges.length - 1))];
+    }
+
+    private float[] measureCharacterEdges() {
+        BreakIterator characters = BreakIterator.getCharacterInstance();
+        characters.setText(text);
+        Path selection = new Path();
+        RectF bounds = new RectF();
+        float[] edges = new float[text.length() + 2];
+        int count = 1;
+        boolean leftToRight = fullLayout.getParagraphDirection(0) > 0;
+        float lineLeft = fullLayout.getLineLeft(0);
+        float lineRight = lineLeft + textWidth;
+        for (int start = characters.first(), end = characters.next();
+                end != BreakIterator.DONE; start = end, end = characters.next()) {
+            fullLayout.getSelectionPath(start, end, selection);
+            if (!selection.isEmpty()) {
+                selection.computeBounds(bounds, true);
+                // A layout selection gives the visual bounds even inside a bidi run.
+                float edge = leftToRight ? bounds.right - lineLeft : lineRight - bounds.left;
+                edges[count++] = Math.max(0f, Math.min(textWidth, edge));
+            }
+        }
+        edges[count++] = textWidth;
+        Arrays.sort(edges, 0, count);
+        return Arrays.copyOf(edges, count);
     }
 
     private StaticLayout singleLine(String value, int width, boolean ellipsize) {
@@ -223,24 +277,20 @@ public final class CameraSafeTickerView extends View {
 
     private boolean canScroll() {
         return compactActive && scrollEnabled && !scrollFinished && isShown()
-                && fullLayout != null && secondLayout == null && lane.width() > 0
-                && textWidth - lane.width() > .5f && ValueAnimator.areAnimatorsEnabled();
+                && scrollDistance > .5f && ValueAnimator.areAnimatorsEnabled();
     }
 
     private void beginScroll() {
         if (!canScroll()) {
             return;
         }
-        float distance = textWidth - lane.width();
-        boolean leftToRight = fullLayout.getParagraphDirection(0) > 0;
-        float start = leftToRight ? 0f : -distance;
-        float end = leftToRight ? -distance : 0f;
         float density = Math.max(.5f, getResources().getDisplayMetrics().density);
-        ValueAnimator slide = ValueAnimator.ofFloat(start, end);
-        slide.setDuration(Math.max(600L, Math.round(distance * 1000f / (density * SCROLL_SPEED_DP_PER_SECOND))));
+        ValueAnimator slide = ValueAnimator.ofFloat(0f, scrollDistance);
+        slide.setDuration(Math.max(600L, Math.round(scrollDistance * 1000f
+                / (density * SCROLL_SPEED_DP_PER_SECOND))));
         slide.setInterpolator(new LinearInterpolator());
         slide.addUpdateListener(frame -> {
-            textOffset = (float) frame.getAnimatedValue();
+            scrollPosition = (float) frame.getAnimatedValue();
             invalidate();
         });
         slide.addListener(new AnimatorListenerAdapter() {
@@ -253,7 +303,7 @@ public final class CameraSafeTickerView extends View {
             }
         });
         animator = slide;
-        textOffset = start;
+        scrollPosition = 0f;
         slide.start();
     }
 
@@ -272,19 +322,65 @@ public final class CameraSafeTickerView extends View {
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         if (fullLayout != null && (animator != null || showScrollEnd)) {
-            drawInLane(canvas, fullLayout, lane, textOffset - fullLayout.getLineLeft(0));
+            drawMarquee(canvas);
         } else if (firstLayout != null) {
-            drawInLane(canvas, firstLayout, firstLane, 0f);
+            drawText(canvas, firstLayout, firstLane.left, firstLane.left, firstLane.right);
             if (secondLayout != null) {
-                drawInLane(canvas, secondLayout, secondLane, 0f);
+                drawText(canvas, secondLayout, secondLane.left, secondLane.left, secondLane.right);
             }
         }
     }
 
-    private void drawInLane(Canvas canvas, StaticLayout label, Rect bounds, float offset) {
+    private void drawMarquee(Canvas canvas) {
+        boolean leftToRight = fullLayout.getParagraphDirection(0) > 0;
+        float lineLeft = fullLayout.getLineLeft(0);
+        if (secondLayout == null) {
+            float offset = leftToRight ? -scrollPosition : scrollPosition - scrollDistance;
+            drawText(canvas, fullLayout, lane.left + offset - lineLeft, lane.left, lane.right);
+            return;
+        }
+
+        // Lay out the two visible fragments at a whole-character seam. A character
+        // moves to the first lane only when there is room for all of it there.
+        float seam = scrollPosition + firstLane.width();
+        float split = characterEdge(seam + Math.ulp(seam), false);
+        float inset = continuationInset(seam, split);
+        if (leftToRight) {
+            float firstStart = firstLane.left - scrollPosition;
+            drawText(canvas, fullLayout, firstStart - lineLeft, firstLane.left,
+                    Math.min(firstLane.right, firstStart + split));
+            float secondStart = secondLane.left + inset;
+            drawText(canvas, fullLayout, secondStart - split - lineLeft, secondStart, secondLane.right);
+        } else {
+            float firstEnd = firstLane.right + scrollPosition;
+            drawText(canvas, fullLayout, firstEnd - textWidth - lineLeft,
+                    Math.max(firstLane.left, firstEnd - split), firstLane.right);
+            float secondEnd = secondLane.right - inset;
+            drawText(canvas, fullLayout, secondEnd - (textWidth - split) - lineLeft,
+                    secondLane.left, secondEnd);
+        }
+    }
+
+    private float continuationInset(float seam, float split) {
+        float next = characterEdge(Math.nextUp(split), true);
+        if (next <= split) {
+            return 0f;
+        }
+        // Ease the space released by the character that just changed lanes.
+        float previous = characterEdge(Math.nextDown(split), false);
+        float fraction = (next - Math.max(seam, split)) / (next - split);
+        float inset = (split - previous) * Math.max(0f, fraction);
+        float spareWidth = Math.max(0f, secondLane.width() - (next - split));
+        return Math.max(0f, Math.min(inset, Math.min(spareWidth, scrollDistance - scrollPosition)));
+    }
+
+    private void drawText(Canvas canvas, StaticLayout label, float x, float left, float right) {
+        if (right <= left) {
+            return;
+        }
         int saved = canvas.save();
-        canvas.clipRect(bounds.left, 0, bounds.right, getHeight());
-        canvas.translate(bounds.left + offset, CameraCutoutBounds.centeredTextTop(label, getHeight()));
+        canvas.clipRect(left, 0, right, getHeight());
+        canvas.translate(x, CameraCutoutBounds.centeredTextTop(label, getHeight()));
         label.draw(canvas);
         canvas.restoreToCount(saved);
     }

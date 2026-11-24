@@ -32,12 +32,29 @@ trap 'rm -rf -- "$work"' EXIT
 package=io/github/flymeisland/diagnostic
 android_jar="$android_sdk/platforms/android-36/android.jar"
 build_tools="$android_sdk/build-tools/36.0.0"
-mkdir -p "$work/classes" "$work/dex"
+mkdir -p "$work/classes" "$work/dex" "$work/api" "$work/api-classes"
 
-javac --release 8 -cp "$android_jar" -d "$work/classes" \
+# The original CameraTextAvoid is supplied by the input APK at runtime.
+cat > "$work/api/CameraTextAvoid.java" <<'JAVA'
+package io.github.flymeisland.diagnostic;
+
+import android.graphics.Rect;
+import android.view.View;
+
+final class CameraTextAvoid {
+    static native void attach(View view);
+    static native void detach(View view);
+    static native boolean local(View view, Rect cutout, int[] position);
+    static native boolean rowBounds(Rect cutout, float top, float bottom);
+}
+JAVA
+javac --release 8 -cp "$android_jar" -d "$work/api-classes" "$work/api/CameraTextAvoid.java"
+
+javac --release 8 -cp "$android_jar:$work/api-classes" -d "$work/classes" \
     "$patch_dir/ExpansionTiming.java" "$patch_dir/CapsuleIconMask.java" "$patch_dir/MediaActionFilter.java" \
-    "$patch_dir/ChargingPowerDisplay.java" "$patch_dir/CameraCutoutBounds.java"
-"$build_tools/d8" --min-api 28 --lib "$android_jar" --output "$work/dex" \
+    "$patch_dir/ChargingPowerDisplay.java" "$patch_dir/CameraCutoutBounds.java" \
+    "$patch_dir/CameraAvoidTextView.java" "$patch_dir/CameraSafeTickerView.java"
+"$build_tools/d8" --min-api 28 --lib "$android_jar" --classpath "$work/api-classes" --output "$work/dex" \
     "$work/classes/$package/"*.class
 python3 - "$original_apk" "$work/dex/classes.dex" "$work/helper.apk" <<'PY'
 import sys
@@ -55,6 +72,8 @@ java -jar "$apktool_jar" decode --no-res --frame-path "$work/framework" \
 java -jar "$apktool_jar" decode --frame-path "$work/framework" \
     -o "$work/app" "$original_apk"
 target="$work/app/smali/$package"
+rm -- "$target"/CameraSafeTickerView\$*.smali "$target"/CameraAvoidTextView\$*.smali \
+    "$target/CameraEdgeFade.smali"
 cp -- "$work/helper/smali/$package/"*.smali "$target/"
 python3 "$patch_dir/apply_animation.py" "$target/SystemUiAicyIsland.smali"
 python3 -B "$patch_dir/apply_icons.py" "$target"

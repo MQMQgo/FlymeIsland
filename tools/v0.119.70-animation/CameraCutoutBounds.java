@@ -92,4 +92,27 @@ final class CameraCutoutBounds {
     static float centeredTextTop(Layout layout, int viewHeight) {
         return Math.max(0f, (viewHeight - layout.getHeight()) * .5f);
     }
+
+    static void textLane(Rect lane, int left, int right, Rect hole,
+            float textWidth, boolean preferRight) {
+        right = Math.max(left, right);
+        if (hole.isEmpty() || hole.right <= left || hole.left >= right) {
+            lane.set(left, 0, right, 1);
+            return;
+        }
+
+        int leftEnd = Math.max(left, hole.left);
+        int rightStart = Math.min(right, hole.right);
+        int leftWidth = leftEnd - left;
+        int rightWidth = right - rightStart;
+        boolean fitsLeft = textWidth <= leftWidth;
+        boolean fitsRight = textWidth <= rightWidth;
+        boolean useRight;
+        if (fitsLeft || fitsRight) {
+            useRight = fitsRight && (preferRight || !fitsLeft);
+        } else {
+            useRight = rightWidth > leftWidth || (rightWidth == leftWidth && preferRight);
+        }
+        lane.set(useRight ? rightStart : left, 0, useRight ? right : leftEnd, 1);
+    }
 }

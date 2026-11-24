@@ -63,8 +63,8 @@ final class CameraCutoutBounds {
             return bounds;
         }
 
-        // The rectangle can cover more than the physical opening. Use the portion
-        // of the display-coordinate outline inside each reported cutout.
+        // The contour can refine the vertical position, but on some devices it
+        // is narrower than the safe width reported by the display.
         List<Rect> exact = new ArrayList<>(bounds.size());
         Path region = new Path();
         RectF enclosing = new RectF();
@@ -75,7 +75,13 @@ final class CameraCutoutBounds {
                 region.computeBounds(enclosing, true);
                 Rect tightened = new Rect();
                 enclosing.roundOut(tightened);
-                exact.add(tightened.intersect(bound) ? tightened : bound);
+                if (tightened.intersect(bound)) {
+                    tightened.left = bound.left;
+                    tightened.right = bound.right;
+                    exact.add(tightened);
+                } else {
+                    exact.add(bound);
+                }
             } else {
                 exact.add(bound);
             }

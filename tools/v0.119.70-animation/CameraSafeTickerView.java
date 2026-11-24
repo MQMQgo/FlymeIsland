@@ -22,6 +22,7 @@ import java.util.Arrays;
 
 public final class CameraSafeTickerView extends View {
     private static final int TEXT_SIZE_SP = 11;
+    private static final float CAMERA_CLEARANCE_DP = 2f;
     private static final float SCROLL_SPEED_DP_PER_SECOND = 30f;
     private static final long START_PAUSE_MS = 1000L;
     private static final long END_PAUSE_MS = 1500L;
@@ -126,26 +127,30 @@ public final class CameraSafeTickerView extends View {
     }
 
     private void refreshLayout(boolean force) {
-        localHole.setEmpty();
-        if (fullLayout != null && CameraTextAvoid.local(this, localHole, screenPosition)) {
-            float top = CameraCutoutBounds.centeredTextTop(fullLayout, getHeight());
-            if (!CameraTextAvoid.rowBounds(localHole,
-                    top + fullLayout.getLineTop(0), top + fullLayout.getLineBottom(0))
-                    || !localHole.intersect(0, 0, getWidth(), getHeight())) {
-                localHole.setEmpty();
-            } else {
-                // Vertical motion inside the same overlapping row leaves its lanes intact.
-                localHole.top = 0;
-                localHole.bottom = 1;
-            }
-        } else {
-            localHole.setEmpty();
-        }
+        readCameraColumn();
         if (force || !geometryReliable || !rowHole.equals(localHole)) {
             geometryReliable = true;
             rowHole.set(localHole);
             rebuildPreview();
         }
+    }
+
+    private void readCameraColumn() {
+        if (fullLayout == null || !CameraTextAvoid.local(this, localHole, screenPosition)) {
+            localHole.setEmpty();
+            return;
+        }
+        float top = CameraCutoutBounds.centeredTextTop(fullLayout, getHeight());
+        if (top + fullLayout.getLineTop(0) >= localHole.bottom
+                || top + fullLayout.getLineBottom(0) <= localHole.top) {
+            localHole.setEmpty();
+            return;
+        }
+        // Reserve the full width for the whole character, even at a round edge.
+        int clearance = (int) Math.ceil(CAMERA_CLEARANCE_DP * getResources().getDisplayMetrics().density);
+        int left = Math.max(0, localHole.left - clearance);
+        int right = Math.min(getWidth(), localHole.right + clearance);
+        localHole.set(left, 0, right, 1);
     }
 
     private void rebuildPreview() {
@@ -326,7 +331,10 @@ public final class CameraSafeTickerView extends View {
         } else if (firstLayout != null) {
             drawText(canvas, firstLayout, firstLane.left, firstLane.left, firstLane.right);
             if (secondLayout != null) {
-                drawText(canvas, secondLayout, secondLane.left, secondLane.left, secondLane.right);
+                float start = fullLayout.getParagraphDirection(0) > 0
+                        ? secondLane.left - secondLayout.getLineLeft(0)
+                        : secondLane.right - secondLayout.getLineRight(0);
+                drawText(canvas, secondLayout, start, secondLane.left, secondLane.right);
             }
         }
     }
